@@ -1,0 +1,23 @@
+# 知识条目模板：复制本文件到 cases/ 目录，按规范填写后运行校验
+# 校验命令: python kb_validator.py cases/
+id: CASE-2026-000            # 命名规范: CASE-年份-三位序号
+title: 一句话标题，含领域词和问题词
+domain: 领域/子领域
+tags: [标签1, 标签2]
+background: |
+  业务场景、规模、约束条件
+problem: |
+  现象、影响范围、根因分析
+solution: |
+  备选方案对比、选型理由
+implementation: |
+  实施步骤、关键配置、回滚预案
+verification: |
+  量化指标、前后对比数据（必须含数字）
+lessons: |
+  踩坑记录、适用边界、不适用场景
+meta:
+  version: v1.0
+  date: 2026-10              # 格式 YYYY-MM
+  owner: 负责人姓名
+  status: 草稿               # 允许值: 草稿 / 生效 / 已废弃
