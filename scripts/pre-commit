@@ -1,0 +1,91 @@
+#!/bin/sh
+# ============================================================
+# 知识库入库校验 pre-commit 钩子
+# ------------------------------------------------------------
+# 触发条件：暂存区包含 .yaml / .yml 变更（模板文件不算）
+# 校验范围：cases/ 与 domains/ 下的全部条目（保证仓库整体一致）
+# 阻断条件：kb_validator.py 返回非 0
+# 绕过方式：git commit --no-verify（仅限紧急情况）
+# ============================================================
+
+set -u
+
+ROOT=$(git rev-parse --show-toplevel 2>/dev/null) || exit 0
+cd "$ROOT" || exit 0
+
+# ---------- 1. 判断是否需要校验 ----------
+STAGED=$(git diff --cached --name-only --diff-filter=ACMR -- '*.yaml' '*.yml' 2>/dev/null || true)
+[ -z "$STAGED" ] && exit 0
+
+# 若暂存的全部是模板文件，则跳过
+if ! printf '%s\n' "$STAGED" \
+  | grep -viE '(^|/)(.*template.*|.*模板.*)\.ya?ml$' \
+  | grep -q .; then
+  exit 0
+fi
+
+# ---------- 2. 确定校验目标 ----------
+set --
+[ -d "$ROOT/cases" ] && set -- "$@" "$ROOT/cases"
+[ -d "$ROOT/domains" ] && set -- "$@" "$ROOT/domains"
+[ $# -eq 0 ] && set -- "$ROOT"
+
+# ---------- 3. 找到 Python 运行时 ----------
+PY=""
+for candidate in \
+  "$ROOT/.venv/Scripts/python.exe" \
+  "$ROOT/.venv/bin/python" \
+  "$ROOT/venv/Scripts/python.exe"
+do
+  if [ -x "$candidate" ]; then
+    PY="$candidate"
+    break
+  fi
+done
+
+UV=""
+if [ -z "$PY" ]; then
+  if command -v uv >/dev/null 2>&1; then
+    UV="uv"
+  elif [ -x "$HOME/AppData/Local/hermes/bin/uv.exe" ]; then
+    UV="$HOME/AppData/Local/hermes/bin/uv.exe"
+  fi
+fi
+
+if [ -z "$PY" ] && [ -z "$UV" ]; then
+  for candidate in python3 python py; do
+    if command -v "$candidate" >/dev/null 2>&1; then
+      PY="$candidate"
+      break
+    fi
+  done
+fi
+
+if [ -z "$PY" ] && [ -z "$UV" ]; then
+  echo "" >&2
+  echo "[pre-commit] 警告：未找到 Python / uv，已跳过入库校验。" >&2
+  echo "[pre-commit] 修复：在仓库根目录执行" >&2
+  echo "             powershell -ExecutionPolicy Bypass -File scripts/install-hooks.ps1" >&2
+  exit 0
+fi
+
+# ---------- 4. 执行校验 ----------
+echo "[pre-commit] 正在校验暂存的知识条目…"
+
+if [ -n "$PY" ]; then
+  "$PY" "$ROOT/kb_validator.py" "$@"
+  STATUS=$?
+else
+  "$UV" run --python 3.12 --with pyyaml python "$ROOT/kb_validator.py" "$@"
+  STATUS=$?
+fi
+
+if [ "$STATUS" -ne 0 ]; then
+  echo "" >&2
+  echo "[pre-commit] 入库校验未通过，提交已被阻止。" >&2
+  echo "[pre-commit] 修复报告中的 ERROR 后重新 git add；确有紧急情况可用 git commit --no-verify 绕过。" >&2
+  exit 1
+fi
+
+echo "[pre-commit] 入库校验通过。"
+exit 0
